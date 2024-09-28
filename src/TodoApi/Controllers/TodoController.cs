@@ -1,68 +1,99 @@
-using Microsoft.AspNetCore.Mvc;
-using System.Collections.Generic;
+using dotnet_todo_api.src.TodoApi.Data;
 using dotnet_todo_api.src.TodoApi.Models;
-using System.Linq;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace dotnet_todo_api.src.TodoApi.Controllers
 {
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
     [Route("api/[controller]")]
     [ApiController]
-    public class TodoController : ControllerBase
+    public class TodoController(ApplicationDbContext context) : ControllerBase
     {
-        private static readonly List<Todo> Todos =
-        [
-            new Todo { Id = 1, Name = "Learn ASP.NET Core", IsComplete = false },
-            new Todo { Id = 2, Name = "Build a Web API", IsComplete = false }
-        ];
+        private readonly ApplicationDbContext _context = context;
 
+        // GET: api/Todo
         [HttpGet]
-        public ActionResult<IEnumerable<Todo>> GetAllTodos()
+        public async Task<ActionResult<IEnumerable<Todo>>> GetTodos()
         {
-            return Todos;
+            return await _context.Todos.ToListAsync();
         }
 
+        // GET: api/Todo/{id}
         [HttpGet("{id}")]
-        public ActionResult<Todo> GetTodoById(long id)
+        public async Task<ActionResult<Todo>> GetTodoById(int id)
         {
-            var todo = Todos.FirstOrDefault(t => t.Id == id);
+            var todo = await _context.Todos.FindAsync(id);
+
             if (todo == null)
             {
                 return NotFound();
             }
+
             return todo;
         }
 
+        // POST: api/Todo
         [HttpPost]
-        public ActionResult<Todo> CreateTodo(Todo todo)
+        public async Task<ActionResult<Todo>> CreateTodo(Todo todo)
         {
-            todo.Id = Todos.Max(t => t.Id) + 1;
-            Todos.Add(todo);
+            _context.Todos.Add(todo);
+            await _context.SaveChangesAsync();
+
             return CreatedAtAction(nameof(GetTodoById), new { id = todo.Id }, todo);
         }
 
+        // PUT: api/Todo/{id}
         [HttpPut("{id}")]
-        public IActionResult UpdateTodo(long id, Todo updatedTodo)
+        public async Task<IActionResult> UpdateTodo(int id, Todo todo)
         {
-            var todo = Todos.FirstOrDefault(t => t.Id == id);
-            if (todo == null)
+            if (id != todo.Id)
             {
-                return NotFound();
+                return BadRequest();
             }
-            todo.Name = updatedTodo.Name;
-            todo.IsComplete = updatedTodo.IsComplete;
+
+            _context.Entry(todo).State = EntityState.Modified;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                if (!TodoExists(id))
+                {
+                    return NotFound();
+                }
+                else
+                {
+                    throw;
+                }
+            }
+
             return NoContent();
         }
 
+        // DELETE: api/Todo/{id}
         [HttpDelete("{id}")]
-        public IActionResult DeleteTodo(long id)
+        public async Task<IActionResult> DeleteTodoById(int id)
         {
-            var todo = Todos.FirstOrDefault(t => t.Id == id);
+            var todo = await _context.Todos.FindAsync(id);
             if (todo == null)
             {
                 return NotFound();
             }
-            Todos.Remove(todo);
+
+            _context.Todos.Remove(todo);
+            await _context.SaveChangesAsync();
+
             return NoContent();
+        }
+
+        private bool TodoExists(int id)
+        {
+            return _context.Todos.Any(e => e.Id == id);
         }
     }
 }
